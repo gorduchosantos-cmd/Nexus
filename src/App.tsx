@@ -26,7 +26,7 @@ const Navbar = () => {
           <a href="#social" className="hover:opacity-100 transition-opacity">Social</a>
         </div>
         <a 
-          href="https://wa.me/seunumeroaqui" 
+          href="https://wa.me/message/F4ZGMVBPOM4UB1" 
           className="bg-white text-black px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all"
         >
           Orçamento
@@ -73,7 +73,7 @@ const Hero = () => {
           transition={{ duration: 0.8, ease: "easeOut", delay: 0.8 }}
         >
           <a 
-            href="#contato" 
+            href="https://wa.me/message/F4ZGMVBPOM4UB1" 
             className="cta-pulse inline-block bg-white text-black px-10 py-5 rounded-full text-sm font-bold uppercase tracking-widest hover:scale-105 transition-transform"
           >
             Inicie seu projeto
