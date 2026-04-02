@@ -3,11 +3,38 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { motion } from "motion/react";
-import { Layers, Star, ArrowUpRight, Instagram, Linkedin, Globe } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { Layers, Star, ArrowUpRight, Instagram, Linkedin, Globe, LogIn, LogOut, Plus, Trash2, Database } from "lucide-react";
 import { useEffect, useState, FormEvent } from "react";
+import { auth, db } from "./firebase";
+import { 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  onAuthStateChanged, 
+  signOut,
+  User
+} from "firebase/auth";
+import { 
+  collection, 
+  addDoc, 
+  query, 
+  where, 
+  onSnapshot, 
+  orderBy, 
+  serverTimestamp,
+  deleteDoc,
+  doc,
+  Timestamp
+} from "firebase/firestore";
 
-const Navbar = () => {
+interface Note {
+  id: string;
+  title: string;
+  createdAt: Timestamp;
+  uid: string;
+}
+
+const Navbar = ({ user }: { user: User | null }) => {
   const [isScrolled, setIsScrolled] = useState(false);
 
   useEffect(() => {
@@ -16,6 +43,17 @@ const Navbar = () => {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
+  const handleLogin = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      console.error("Login failed:", error);
+    }
+  };
+
+  const handleLogout = () => signOut(auth);
+
   return (
     <header className={`fixed top-0 w-full z-50 transition-all duration-300 ${isScrolled ? "glass py-4" : "py-6"}`}>
       <nav className="max-w-7xl mx-auto px-6 flex items-center justify-between">
@@ -23,16 +61,206 @@ const Navbar = () => {
         <div className="hidden md:flex space-x-12 text-sm font-medium tracking-widest uppercase opacity-70">
           <a href="#expertise" className="hover:opacity-100 transition-opacity">Expertise</a>
           <a href="#processo" className="hover:opacity-100 transition-opacity">O Processo</a>
+          <a href="#notes" className="hover:opacity-100 transition-opacity">Notas</a>
           <a href="#social" className="hover:opacity-100 transition-opacity">Social</a>
         </div>
-        <a 
-          href="https://wa.me/message/F4ZGMVBPOM4UB1" 
-          className="bg-white text-black px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all"
-        >
-          Orçamento
-        </a>
+        <div className="flex items-center gap-4">
+          {user ? (
+            <button 
+              onClick={handleLogout}
+              className="flex items-center gap-2 text-muted hover:text-white transition-colors text-xs font-bold uppercase tracking-widest"
+            >
+              <LogOut className="w-4 h-4" /> Sair
+            </button>
+          ) : (
+            <button 
+              onClick={handleLogin}
+              className="flex items-center gap-2 bg-white text-black px-6 py-2.5 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all"
+            >
+              <LogIn className="w-4 h-4" /> Login
+            </button>
+          )}
+        </div>
       </nav>
     </header>
+  );
+};
+
+const NotesSection = ({ user }: { user: User | null }) => {
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [newNote, setNewNote] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) {
+      setNotes([]);
+      setLoading(false);
+      return;
+    }
+
+    const q = query(
+      collection(db, "notes"),
+      where("uid", "==", user.uid),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const notesData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Note[];
+      setNotes(notesData);
+      setLoading(false);
+    }, (error) => {
+      console.error("Firestore error:", error);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleAddNote = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user || !newNote.trim()) return;
+
+    try {
+      await addDoc(collection(db, "notes"), {
+        title: newNote.trim(),
+        uid: user.uid,
+        createdAt: serverTimestamp()
+      });
+      setNewNote("");
+    } catch (error) {
+      console.error("Error adding note:", error);
+    }
+  };
+
+  const handleDeleteNote = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "notes", id));
+    } catch (error) {
+      console.error("Error deleting note:", error);
+    }
+  };
+
+  const seedSampleData = async () => {
+    if (!user) return;
+    const samples = [
+      'Today I created a Supabase project.',
+      'I added some data and queried it from Next.js.',
+      'It was awesome!'
+    ];
+
+    for (const title of samples) {
+      await addDoc(collection(db, "notes"), {
+        title,
+        uid: user.uid,
+        createdAt: serverTimestamp()
+      });
+    }
+  };
+
+  return (
+    <section id="notes" className="py-32 px-6 bg-dark border-y border-white/5">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col md:flex-row justify-between items-end mb-20 gap-8">
+          <div className="text-left">
+            <h2 className="font-display text-4xl md:text-6xl font-bold tracking-tighter uppercase">Arquivo de Notas</h2>
+            <p className="text-muted mt-4 max-w-xl">Gerencie seus insights e dados com segurança de nível empresarial e Row Level Security (RLS) via Firestore.</p>
+          </div>
+          {user && notes.length === 0 && !loading && (
+            <motion.button 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={seedSampleData}
+              className="flex items-center gap-2 border border-white/10 text-white px-8 py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-white/5 transition-all"
+            >
+              <Database className="w-4 h-4" /> Seed Sample Data
+            </motion.button>
+          )}
+        </div>
+
+        {!user ? (
+          <div className="bento-card p-20 rounded-[3rem] text-center">
+            <LogIn className="w-12 h-12 mx-auto mb-6 text-muted opacity-50" />
+            <h3 className="text-2xl font-display font-bold mb-4">Acesso Restrito</h3>
+            <p className="text-muted mb-8 max-w-md mx-auto">Faça login com sua conta Google para acessar seu arquivo pessoal de notas e gerenciar seus dados.</p>
+            <button 
+              onClick={() => signInWithPopup(auth, new GoogleAuthProvider())}
+              className="bg-white text-black px-10 py-5 rounded-full text-sm font-bold uppercase tracking-widest hover:scale-105 transition-transform"
+            >
+              Entrar com Google
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
+            <div className="lg:col-span-1">
+              <div className="bento-card p-8 rounded-3xl sticky top-32">
+                <h3 className="text-xl font-display font-bold mb-6 flex items-center gap-2">
+                  <Plus className="w-5 h-5" /> Nova Nota
+                </h3>
+                <form onSubmit={handleAddNote} className="space-y-4">
+                  <textarea 
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    placeholder="O que você está pensando?"
+                    className="w-full bg-dark border border-white/5 rounded-2xl px-4 py-4 focus:border-white/20 outline-none transition-colors resize-none h-32"
+                  />
+                  <button 
+                    type="submit"
+                    disabled={!newNote.trim()}
+                    className="w-full bg-white text-black py-4 rounded-full text-xs font-bold uppercase tracking-widest hover:bg-opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Adicionar Nota
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <div className="lg:col-span-2">
+              {loading ? (
+                <div className="flex justify-center py-20">
+                  <div className="w-8 h-8 border-2 border-white/10 border-t-white rounded-full animate-spin" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <AnimatePresence mode="popLayout">
+                    {notes.map((note) => (
+                      <motion.div 
+                        key={note.id}
+                        layout
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 20 }}
+                        className="bento-card p-6 rounded-2xl flex justify-between items-center group"
+                      >
+                        <div className="flex-1">
+                          <p className="text-lg font-light leading-relaxed">{note.title}</p>
+                          <p className="text-[10px] uppercase tracking-widest text-muted mt-2">
+                            {note.createdAt?.toDate().toLocaleString() || "Salvando..."}
+                          </p>
+                        </div>
+                        <button 
+                          onClick={() => handleDeleteNote(note.id)}
+                          className="p-3 text-muted hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                  {notes.length === 0 && (
+                    <div className="text-center py-20 border border-dashed border-white/5 rounded-[2.5rem]">
+                      <p className="text-muted italic">Nenhuma nota encontrada. Comece a escrever!</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
   );
 };
 
@@ -400,14 +628,34 @@ const Footer = () => {
 };
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-dark flex items-center justify-center">
+        <div className="w-12 h-12 border-2 border-white/10 border-t-white rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen">
-      <Navbar />
+      <Navbar user={user} />
       <main>
         <Hero />
         <Marquee />
         <BentoGrid />
         <About />
+        <NotesSection user={user} />
         <Testimonials />
       </main>
       <Footer />

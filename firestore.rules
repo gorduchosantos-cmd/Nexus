@@ -1,0 +1,70 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: notes
+// Document ID: auto-generated
+// Fields:
+//   - title: string (required, max 500 chars) - The content of the note
+//   - createdAt: timestamp (required, immutable) - Creation time
+//   - uid: string (required, immutable) - Owner's user ID
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isValidNote(data) {
+      return data.keys().hasAll(['title', 'createdAt', 'uid']) &&
+             data.keys().hasOnly(['title', 'createdAt', 'uid']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 500 &&
+             data.createdAt is timestamp &&
+             data.uid == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /notes/{noteId} {
+      // Users can only read their own notes
+      allow read: if isDocOwner();
+      
+      // Users can create notes if they are authenticated and the data is valid
+      allow create: if isAuthenticated() && 
+                      isValidNote(request.resource.data) &&
+                      request.resource.data.uid == request.auth.uid;
+
+      // Users can update their own notes (only title can change)
+      allow update: if isDocOwner() && 
+                      isValidNote(request.resource.data) &&
+                      request.resource.data.createdAt == resource.data.createdAt &&
+                      request.resource.data.uid == resource.data.uid;
+
+      // Users can delete their own notes
+      allow delete: if isDocOwner();
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
